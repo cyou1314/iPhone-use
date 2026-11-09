@@ -1,0 +1,24 @@
+# === 绝密：永不入库 ===
+*.mobiledevicepairing
+pairing/
+*.pem
+*.key
+.env
+.env.*
+secrets/
+credentials*
+
+# === 模型与账号配置 ===
+config.local.*
+*.local.json
+
+# === 构建产物 ===
+build/
+DerivedData/
+*.ipa
+*.app/
+
+# === 杂项 ===
+.DS_Store
+node_modules/
+*.log
