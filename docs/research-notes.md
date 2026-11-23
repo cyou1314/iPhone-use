@@ -190,3 +190,139 @@ testmanagerd 会话的备用"手"**。是否成立取决于手机内 App 能否�
 闸 1/闸 2 的现实卡点。
 - 新增观察项：CoreDevice 备用"手"（iphone-cli 路线），列入风险清单观察项，待第 0 期探针分支验证。
 
+---
+
+## 第二轮周巡（2026-11-23，基线 2026-11-16 → 本轮）
+
+本轮专题线：② iOS 27 的 DDI 个性化/RSD/开发者模式变化。下轮：③ 脑源池免费额度变动复核。
+再下轮：④ 回环隧道提供者与 VPN 槽冲突实证 → 回到 ①。
+
+### Poki（JosssphZhou/poki）
+
+- main HEAD dbe4ff6c（2026-11-22，AGENTS.md 改写）；0.5.0 已开版（7ab0046c）。
+- Release：0.4.5 Beta 1（2026-11-19，Apple 登录 -22411 修复：一次登录最多问一个 2FA 码、401 -22411
+不再当作限流）、0.4.6 Beta 1（2026-11-20，Duo 全面支持、Poki Anytime 语音、按名开 App、记忆/技能页）、
+0.4.7 Beta 1（2026-11-21，热修复：iPhone 17 Pro 启动崩溃 #587/#554、Photos 误触发付款提示 #576、
+灵动岛批准卡折叠后仍可点 #594）；Poki Setup 0.2.8 Beta（2026-11-20，安装时挂载 DDI，见 #509）。
+- standalone 分支：自 2026-11-11（6e9c858）后**无新提交**，连续两周无动静。
+- HANDOFF.md：最后改动仍为 2026-11-07，本轮无变化。
+- 真机反馈 issue（本轮新开 34 条，挑与地基链相关的）：
+  - #681（2026-11-22）：0.4.7 上 Live Activity 一点就抢回前台并立刻关会话；同日 10.7.0.1 环回
+  约 9 小时不应答（13:38–22:37，developer service: off，49152 找不到），晚间自行恢复；Apple 登录
+  -22411 再次出现（0.4.5 已修过一轮，仍复发）。
+  - #673（2026-11-22）：iOS 27.3 / Poki 0.4.1 上自动化会话永不结束，"Automation Running" 浮层常驻，
+  只能强退 App；作者文案称 iOS 27 应走 native services（无 XCTest 会话、无浮层），但该机上回落到
+  XCTest 且空闲不关闭。会话生命周期在 27.3 上有问题。
+  - #672/#554（2026-11-20/22）：0.4.4–0.4.7 在 iOS 27.2.1/27.3 的 iPhone17,1 / iPhone18,3 上
+  启动即 scene-create watchdog 崩溃（0x8BADF00D）。
+  - #528（2026-11-19）：iPhone 重启后只开 Clash Mi，Poki 卡在回环检查（10.7.0.1:62078/49152 超时，
+  gVisor，clash.meta/1.19.33）；切 LocalDevVPN 后 Automation 就绪，再切回 Clash Mi 可正常跑任务。
+  作者已把该流程写进官方指南（见下）。
+  - #572（2026-11-20）：折叠的 iPhone Duo 盖板屏上 WeChat 能开，但截图与点按报
+  `target_display_unavailable`；展开内屏则正常。#472（已关）：27.3 内屏激活时截到黑色的盖板尺寸图。
+  - #617（2026-11-21，作者 ZhehanZhang）：Poki Setup for Windows 在 iOS 18 手机上拿不到 DDI
+  （见专题②）。
+  - #656/#654（2026-11-22）：虚拟外接显示器原型与 UnrestrictMirroring 调研（见专题②）。
+  - #621：iPhone relay 间歇报 offline，开关 Remote Connection 可恢复。
+
+### 专题②：iOS 27 的 DDI 个性化/RSD/开发者模式变化
+
+证据强度：代码（强）+ 作者自述/官方文档（中）+ 多人真机 issue（第三方实测）互证。
+
+1. **iOS 27.2+ 的 RSD 新规矩——多条隧道必须用同一个 host UUID**（idevice e5645743，2026-11-16，
+代码注释原文："On iOS 27.2+ every connection to a tunnel must present the same UUID, or the device
+tears down the services it advertised to all of them."）。含义：同一设备上若开多条 RSD 隧道
+（lockdown、DDI 挂载、testmanagerd 各走一条），须共享同一个 host UUID，否则设备会撤掉已通告的服务。
+对 PLAN 的影响：回环链设计须把 UUID 统一写死为一条，不可每连接随机生成——这是新增的设计约束，
+不是推翻（见 PLAN 修订）。
+2. **TSS 个性化请求收紧**（idevice 2dca9a58，2026-11-16）：为拿 timestamp 响应，TSS 请求须补
+`Ap,OSEnvironment`、一批安全版本键（`Ap,CurrentOSSecurityVersion`、`Ap,MinimumOSSecurityVersion`、
+`Ap,EnableGroundhog` 等）及 build identity 的 `RequestManifestProperties`。DDI 个性化签发链路仍在
+跟进苹果侧的请求字段变化。
+3. **DDI 挂载分两条路，按 iOS 版本分流**（Poki #617，2026-11-21，作者自述+代码）：
+26.4+ 走个性化镜像经 CoreDevice 隧道挂载（cryptex 路径）；26.4 之前（含 iOS 18）走 lockdown over USB
+的 image mounter，且挂载要两份配对记录同时有效（Setup 保存的与 USB 服务持有的，Windows 上可能不一致，
+任一被拒即挂载失败）。修复分支 `dev/windows-ios18-ddi` 改为先走 CoreDevice 隧道挂载，USB 只作回退；
+另修了 seeded 镜像残留 cryptex 文件导致 Poki 拒收的问题。PLAN 闸 1"获取与挂载分开验"得到佐证，
+且须注意：我们的测试机是 iOS 27，走的是 cryptex 路径，Windows 双记录坑与我们无关（Mac 路线）。
+4. **iOS 27+ 的"手"主路已是 CoreDevice displayservice**（Poki #654，2026-11-22，作者自述）：
+Poki 在 iOS 27+ 经 `com.apple.coredevice.displayservice` 驱机（与 Xcode 27 Device Hub 同协议），
+iOS 18–26 才回落到 XCTest 会话（带锁屏密码确认与自动化水印）。displayservice 媒体会话打开期间
+相机不可用，Poki 只在输入时短开。UnrestrictMirroring（越狱 tweak，不可用）钩子显示：原生
+iOS 18–26 拒绝 Device Hub 共享可能源于 dtremotedisplayd 里的生产熔丝（SigningFuse）检查——
+解释了版本分流的成因，但越狱方案不在本项目范围。
+5. **虚拟外接显示器路线已探、被 entitlement 挡住**（Poki #656，2026-11-22，作者实测）：
+iPhone 17 Pro / iOS 27.3 上经 CoreDevice 申请虚拟外接显示器，显示器分配成功（黑屏、独立 uniqueId），
+但 `devicectl device process launch --display` 被 SpringBoard 拒绝：缺
+`com.apple.springboard.display-lookup` entitlement，DDI 里的 daemon（dtappserviced、testmanagerd
+均已查）都不持有。结论："后台跑任务、机主照常用手机"这条路目前无合法 entitlement 可走，暂封存。
+6. **会话生命周期在 27.3 上有毛病**（#673）：native services 路径本应无 XCTest 会话、无浮层，
+但 0.4.1 在 27.3 上回落到 XCTest 且空闲不关闭；结合 #382（0.4.1 在 27.3 上 DDI 报过期）与
+#672/#554（27.2.1/27.3 启动 watchdog 崩溃），27.3 目前是 Poki 的问题集中版本，DDI 跟进仍是卡点。
+7. **重启恢复已有作者确认的标准流程**（Poki docs/iphone-guide.md，f294e495，2026-11-21）：
+重启后只开 Clash Mi 会卡回环检查，标准做法是先用 LocalDevVPN 启动一次自动化（等日志出现
+`[runner] running`），保持 Automation 开着，再断开 LocalDevVPN 切回 Clash Mi。PLAN 闸 2 的
+重启恢复应按此流程验。
+8. **iPhone Duo（折叠屏）成为新变量**：iOS 27.2.1 上的新机型，盖板/内屏两块屏；Poki 0.4.6
+做了全面支持，但盖板屏仍有 `target_display_unavailable`（#572）。我们的测试机是 iPhone 17 Pro
+（单屏），Duo 问题不直接影响，但"当前显示屏判定"是执行器必须处理的已知坑。
+9. **StikDebug 的配对/连接恢复指引**（f83299ce，2026-11-17，代码+测试）：只加了诊断文案与测试，
+无 DDI/RSD 功能变化；另新增按 PID 选 JIT 进程（6299f39）与 Andarium 支持（63713ea2）。
+idevice 另有一处配对证书有效期 bug 修复（327414d7：证书寿命算式多了 `*12*31`，约 372 倍，改为 9 年）。
+
+### StikDebug / idevice / SideStore / jitterbugpair
+
+- StikDebug：最新 Release 仍为 3.2.2（2026-11-08）；本轮提交均为小修（见专题②第 9 条），无地基链功能变化。
+- idevice（jkcoxson）：本轮恢复活跃，HEAD c8fff6d7（2026-11-22，FFI adapter stream 所有权）；
+  关键提交见专题②第 1、2 条及证书修复。
+- SideStore：最新提交仍为 4f3d18d9（2026-11-06），本轮无变化。
+- jitterbugpair：自 2022-09 后无提交，本轮无变化。
+
+### 同类与邻近
+
+- pymobiledevice3：活跃。2026-11-22 accessibilityaudit 解码 `AXAuditNode_v1` 层级节点
+（CoreDevice AX 读屏路径的补强）；同日 crash stackshot/spindump 进程与线程列表。
+- go-ios：继续折叠屏 HID 工作：读铰链角度并保持（#898，2026-11-20）、转屏方向（#895）；
+  均围绕 iPhone Duo，与 testmanagerd 无关。
+- WebDriverAgent：**已搬家**。appium/WebDriverAgent README（30aac069，2026-11-20）声明开发已迁入
+appium/appium-ios monorepo（packages/webdriveragent），旧仓只留预编译下载。观察名单指针已更新。
+- iphone-cli（HyunSeob）：一周内 0.1.7→0.1.10（2026-11-23）：`iph record` 录屏存 MP4（#11）、
+`iph syslog` 读机日志（#9）、Duo 当前显示屏触摸（#12）。仍为宿主侧工具，不改其对照组定位。
+- 新入场者（GitHub 搜索，2026-11-16 后创建，63 条命中里筛出 6 个）：
+  - safwanadnan/iphoneuse（2026-11-18）：Mac 宿主侧，brew 一键装、WDA 助手 App，MCP 接入；
+    宿主指挥版对照组，未深挖。
+  - zerosettle/physical-iphone-use（2026-11-17）：纯技能文档（AXe/MCP），无新机制。
+  - deemo0666/pallas-iphone-runner（2026-11-19）：XCTest Runner + Mac USB 安装器，Pallas Agent 的
+    手机端组件，DSH 插件联动；宿主侧路线。
+  - 0bull/iphone-mcp（2026-11-17）：托管真机（云端手机），与"自己手机独立跑"无关。
+  - Zeptap/iphone-use（2026-11-19）：Agent skills 文档合集。
+  - 其余多为 PWA/实验仓库。本轮无新的**手机独立版**入场者；未发现值得克隆深挖的新项目。
+
+### X 通道（Weir，本轮 2 次搜索均成功返回）
+
+- Weir 余额 4000/5000（2026-12-01 UTC 重置）；两次搜索："Poki iPhone agent"（5 条）与
+"iPhone Duo OR iphone-cli OR testmanagerd"（5 条）。内容为 Poki 榜单提及与 iPhone Duo 零售闲聊，
+无新增技术事实。
+
+### 对 PLAN 的修订（本轮）
+
+- §三/§六风险 #9：新增约束——iOS 27.2+ 上多条 RSD 隧道必须共享同一 host UUID，否则设备撤掉
+  已通告的服务（idevice e5645743）。回环链实现时 UUID 须统一，不可每连接随机。
+- §五闸 2：补充作者确认的重启恢复标准流程——先用 LocalDevVPN 启动一次自动化（见日志
+  `[runner] running`），再切回日常 VPN（Poki iphone-guide.md，f294e495）。
+- 观察项 #11（CoreDevice 备用"手"）：升级——Poki 在 iOS 27+ 已把 displayservice 作主驱机路，
+  XCTest 只是 26 及以下回退；虚拟外接显示器后台路线已探明被 entitlement 挡住，暂封存。
+  闸 3 的一票否决地位不变。
+- 未推翻的旧结论：DDI 跟进速度仍是闸 1/闸 2 的现实卡点（27.3 上多发问题）；standalone 分支
+  连续两周无提交，独立版仍停在 0.2.x/11-11 状态。
+
+
+### 用户点名线索（2026-11-23）
+
+- HyunSeob/iphone-cli（https://github.com/HyunSeob/iphone-cli）：Rust 写的工具，号称让 AI agent 通过无障碍树（accessibility tree）读取并操作真机 iPhone 上的任意 App，不用 XCUITest、不用 WebDriverAgent、不用 Xcode 签名。2026-11-23 在 Upstar iOS 周榜排第 15（七天 +78 星、总星 119）。
+- 用户原话「15 你记下，对我后续研究有用」——列为正式调研线索，后续轮次需核：①它与本笔记此前「CoreDevice 备用手（iphone-cli 路线）」观察项是不是同一个东西；②无障碍树路线在 iOS 27 上的实际能力边界（读屏之外能不能点/输入、要不要配对/隧道、是否依赖开发者模式）；③与 PLAN 主线（testmanagerd 最小执行器）的关系——是备选「手」还是可借鉴的读屏层。
+
+### Pack 合并设想（2026-11-23，用户定性：仅调研）
+
+- 用户由 fish-pocket（DSH iOS 版，对接 iCTRL 操控手机）提出「操控手机的 App 与 Pack 合并」，随即定性：现在只是 iPhone-use 前期调研，不立项。合并计划草案在 `~/workspace/pack/PACK-PHONE-MERGE-PLAN-DRAFT.md`，封存待 12-09 收官复盘。
+- 对本调研的增量事实：fish-pocket 的操控层是第三方 iCTRL（侧载+开发者模式+首次设置用电脑），其安全口径（敏感动作先问、双音量键急停、只本机监听）可列为「手」的现成参照件，与 testmanagerd 主线、iphone-cli 无障碍树路线并列比较。
